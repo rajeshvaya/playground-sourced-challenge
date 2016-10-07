@@ -24,8 +24,9 @@ function relationshipSet(){
 
 			// now add the child dependencies with its parent wherever the parent exists
 			Object.keys($this.rules.dependencies).forEach(function(item){
-				// if the item is self - ignore
-				if(item == dependant) return;
+				
+				if(item == dependant) return; // if the item is self - ignore
+				if(item == target) return; // no need to add child self dependencies
 				if($this.rules.dependencies[item].indexOf(dependant) === -1) return; // no need to process parent is not present
 				if($this.rules.dependencies[item].indexOf(target) > -1) return; // not need to add the child again
 				$this.rules.dependencies[item].push(target);
@@ -60,17 +61,30 @@ function relationshipSet(){
 		// check if any dependant targets are also included in the exlusives rules
 		var $this = this;
 		var result = true;
-
 		// loop over all items and check if any target element matches exclusive rules for an item
 		Object.keys($this.rules.dependencies).forEach(function(item){
 			// any target is also added in the exclusives list then the result is false
 			$this.rules.dependencies[item].forEach(function(target){
-				if($this.rules.exclusives[item] && $this.rules.exclusives[item].indexOf(target) > -1)
+				
+				if($this.rules.exclusives[item] && $this.rules.exclusives[item].indexOf(target) > -1){
 					result = false;
+				}
+				var targetExclusives = $this.rules.exclusives[target] || [];
+				targetExclusives.forEach(function(te){
+					if($this.rules.dependencies[item].indexOf(te) > -1){
+						result = false;
+					}
+				});
 			});
 		});
 
 		return result;
+	};
+
+	this._isExclusive = function(item1, item2){
+		if(this.rules.exclusives[item1] && this.rules.exclusives[item1].indexOf(item2) > -1)
+			return true;
+		return false;
 	};
 
 	this._prepareDependancyItem = function(item){
@@ -97,6 +111,55 @@ obj.areExclusive = function(item1, item2, rs){
 
 obj.checkRelationships = function(rs){
 	return rs.checkRelationships();
+};
+
+obj.toggle = function(selectedItems, item, rs){
+	// lets first get all the dependants of the to-be-toggled item
+	var dependants = rs.rules.dependencies[item] || [];
+	var exclusives = rs.rules.exclusives[item] || [];
+
+	// uncheck all the exclusives related targets and its child dependants
+	var toRemoveItems = [];
+	var recursiveRemoveval = function(i){
+		toRemoveItems.push(i);
+		Object.keys(rs.rules.dependencies).forEach(function(d){
+			if(rs.rules.dependencies[d].indexOf(i) > -1 && toRemoveItems.indexOf(d) === -1){
+				toRemoveItems.push(d);
+				recursiveRemoveval(d);
+			}
+		});
+	};
+
+	// the item is not present currently - so toggle would mean add it
+	if(selectedItems.indexOf(item) === -1){
+		selectedItems.push(item); // toggle as enabled the item
+		selectedItems = selectedItems.concat(dependants); // add the dependants to the selected items
+		dependants.forEach(function(d){ // remove all exclusives for dependats as well
+			exclusives = exclusives.concat(rs.rules.exclusives[d] || []);
+		});
+		
+		exclusives.forEach(function(e){
+			recursiveRemoveval(e);
+		});
+
+		toRemoveItems.forEach(function(r){
+			var rIndex = selectedItems.indexOf(r);
+			if(rIndex > -1)
+				selectedItems.splice(rIndex, 1);
+		});
+	}
+	// the item is already present currently - so toggle would mean remove it
+	else{
+
+		recursiveRemoveval(item);
+		toRemoveItems.forEach(function(r){
+			var rIndex = selectedItems.indexOf(r);
+			if(rIndex > -1)
+				selectedItems.splice(rIndex, 1);
+		});
+
+	}
+	return selectedItems;
 };
 
 
